@@ -1,0 +1,2 @@
+ChooseALicense.com states that respositories without a license are "under exclusive copyright by default."
+I may change my mind, but as of now I prefer not to add a license. Thanks.
