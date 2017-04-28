@@ -1,0 +1,46 @@
+:root {
+  --color-bg: rgba(230, 230, 230, 50);
+}
+
+* {
+  font-family: sans-serif;
+}
+
+body {
+  text-align: center;
+  background-color: black;
+}
+.update-section {
+  width: 50vw;
+}
+
+.update-header {
+  text-align: center;
+  background-color: var(--color-bg);
+  height: 6vw;
+  font-size: 5vw;
+  margin-bottom: 0.3vw;
+}
+
+.checkbox {
+  display: inline-block;
+  background-color: var(--color-bg);
+  width: 6vw;
+  height: 6vw;
+  float: left;
+  line-height: 6vw;
+  font-size: 3vw;
+  margin-bottom: .3vw;
+  margin-right: .3vw;
+}
+
+.update-info {
+  display: inline-block;
+  background-color: var(--color-bg);
+  width: 43.7vw;
+  height: 6vw;
+  font-size: 2.4vw;
+  line-height: 6vw;
+  float: right;
+  margin-bottom: .3vw;
+}
