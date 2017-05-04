@@ -1,14 +1,18 @@
 // draw board variables
-var yOffset = 3;
-var xOffset = 4;
 var ySquares = 27;
 var xSquares = 36;
-var squareSize = 22;
+var width = 600;
+var height = 450;
+var squareSize = Math.floor(Math.min(width / xSquares, height / ySquares));
+var xOffset = (width - squareSize * xSquares) / 2;
+var yOffset = (height - squareSize * ySquares) / 2;
+// var squareSize = 16; // 22
+
 var colorOne = 'rgb(180, 180, 180)';
 var colorTwo = 'rgb(200, 200, 200)';
 var snekSquareSize = squareSize - 6;
 
-// controls
+// enums
 var DIRS = Object.freeze({
     UP : 'ArrowUp',
     DOWN : 'ArrowDown',
@@ -20,19 +24,44 @@ var DIRS = Object.freeze({
 var IO_EVTS = Object.freeze({
     KEY_DN : 'key down',
     SNAKE_DATA : 'snake data',
-    STATE : "game state"
+    STATE : "game state",
+    SQUP_DATA : 'squp data',
+    POINTS : 'points'
 });
 
 var GAME_STATE = Object.freeze({
     START : 'start',
     PLAY : 'play',
-    OVER : 'over'
+    OVER_TIE : 'tie',
+    OVER_LOST : 'lost',
+    OVER_WON : 'won'
 });
 
+var Style = function(styles) {
+    this.styles = styles;
+
+    this.applyTo = function(ctx) {
+        for (var key in this.styles) {
+            if (!this.styles.hasOwnProperty(key)) {
+                continue;
+            }
+            ctx[key] = this.styles[key];
+        }
+    };
+};
+
+var ggStyle = new Style({
+    textAlign : 'center',
+    fillStyle : 'white',
+    font : '60px Arial'
+});
 
 // player snakes
 var snake = new Snek("black");
 var opponent = new Snek("white");
+
+// square update
+var squp = new SquareUpdater(ySquares, xSquares);
 
 // game starte
 var state = GAME_STATE.PLAY;
@@ -68,6 +97,34 @@ function Snek(color) {
     }
 };
 
+function SquareUpdater(rows, cols) {
+    this.rows = rows;
+    this.cols = cols;
+    this.squares = []
+
+    for (var y = 0; y < this.rows; y++) {
+        this.squares.push([]);
+        for (var x = 0; x < this.cols; x++) {
+            this.squares[this.squares.length - 1].push([]);
+        }
+    }
+
+    this.add = function(row, col, color) {
+        if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) {
+            throw Exception('Square out of bounds.');
+        }
+        this.squares[row][col].push(color);
+    };
+
+    this.remove = function(row, col, color) {
+        if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) {
+            throw Exception('Square out of bounds.');
+        }
+        var pos = this.squares.indexOf(color);
+        this.squares[row][col].splice(color, 1);
+    }
+};
+
 function initIO() {
     socket = io();
     socket.on(IO_EVTS.SNAKE_DATA, function(data) {
@@ -77,6 +134,21 @@ function initIO() {
     socket.on(IO_EVTS.STATE, function(data) {
         state = data;
     });
+    socket.on(IO_EVTS.SQUP_DATA, function(data) {
+        for (sq in data) {
+            if (data[sq][0] == 'add') {
+                squp.add(data[sq][2], data[sq][1], data[sq][3]);
+            } else {
+                console.log(data[sq]);
+                squp.remove(data[sq][2], data[sq][1], data[sq][3]);
+            }
+        }
+    });
+    socket.on(IO_EVTS.POINTS, function(data) {
+        $('#my-score').text(data[0]);
+        $('#opponent-score').text(data[1]);
+    });
+
     $('#game-canvas').keydown(function(event) {
         if (DIRS.set.has(event.key)) {
             socket.emit(IO_EVTS.KEY_DN, event.key);
@@ -85,6 +157,8 @@ function initIO() {
 };
 
 $("document").ready(function() {
+    $('.info-bar').width(squareSize * xSquares);
+
     var canvas = document.getElementById("game-canvas");
     canvas.focus();
 
@@ -94,13 +168,31 @@ $("document").ready(function() {
             drawBoard(ctx, colorOne, colorTwo);
             snake.draw(ctx);
             opponent.draw(ctx);
-        } else if (state == GAME_STATE.OVER) {
+
+            for (var row = 0; row < squp.rows; row++) {
+                for (var col = 0; col < squp.cols; col++) {
+                    for (i in squp.squares[row][col]) {
+                        var sq = squp.squares[row][col][i];
+                        ctx.fillStyle = squp.squares[row][col][i];
+                        drawSquare(ctx, col, row, squareSize);
+                    }
+                }
+            }
+        } else if (state == GAME_STATE.OVER_TIE) {
             ctx.fillStyle = "rgb(70, 70, 70)";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.textAlign = "center";
-            ctx.fillStyle = "white";
-            ctx.font = '60px Arial';
-            ctx.fillText("Game Over D:", canvas.width / 2, canvas.height / 2);
+            ggStyle.applyTo(ctx);
+            ctx.fillText("You Tied!", canvas.width / 2, canvas.height / 2);
+        } else if (state == GAME_STATE.OVER_WON) {
+            ctx.fillStyle = "rgb(70, 70, 70)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ggStyle.applyTo(ctx);
+            ctx.fillText("You Won!", canvas.width / 2, canvas.height / 2);
+        } else if (state == GAME_STATE.OVER_LOST) {
+            ctx.fillStyle = "rgb(70, 70, 70)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ggStyle.applyTo(ctx);
+            ctx.fillText("You Lost!", canvas.width / 2, canvas.height / 2);
         }
     }, 50);
     initIO();
