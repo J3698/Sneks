@@ -98,7 +98,7 @@ function Game(first, second) {
 
     // update timer
     var interval = setInterval(function() {
-        // game.snakeOne.move();
+        game.snakeOne.move();
         game.snakeTwo.move();
 
         game.itemFactory.update();
