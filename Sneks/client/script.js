@@ -26,7 +26,8 @@ var IO_EVTS = Object.freeze({
     SNAKE_DATA : 'snake data',
     STATE : "game state",
     SQUP_DATA : 'squp data',
-    POINTS : 'points'
+    POINTS : 'points',
+    TIME: 'time'
 });
 
 var GAME_STATE = Object.freeze({
@@ -61,7 +62,7 @@ var snake = new Snek("black");
 var opponent = new Snek("white");
 
 // square update
-var squp = new SquareUpdater(ySquares, xSquares);
+var squp = new SquareUpdater(xSquares, ySquares);
 
 // game starte
 var state = GAME_STATE.PLAY;
@@ -97,33 +98,45 @@ function Snek(color) {
     }
 };
 
-function SquareUpdater(rows, cols) {
-    this.rows = rows;
-    this.cols = cols;
+function SquareUpdater(xLen, yLen) {
+    this.xLen = xLen;
+    this.yLen = yLen;
     this.squares = []
 
-    for (var y = 0; y < this.rows; y++) {
+    for (var y = 0; y < this.yLen; y++) {
         this.squares.push([]);
-        for (var x = 0; x < this.cols; x++) {
+        for (var x = 0; x < this.xLen; x++) {
             this.squares[this.squares.length - 1].push([]);
         }
     }
 
-    this.add = function(row, col, color) {
-        if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) {
+    this.add = function(x, y, color) {
+        if (y < 0 || y >= this.yLen || x < 0 || x >= this.xLen) {
             throw Exception('Square out of bounds.');
         }
-        this.squares[row][col].push(color);
+        this.squares[y][x].push(color);
     };
 
-    this.remove = function(row, col, color) {
-        if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) {
+    this.remove = function(x, y, color) {
+        if (y < 0 || y >= this.yLen || x < 0 || x >= this.xLen) {
             throw Exception('Square out of bounds.');
         }
         var pos = this.squares.indexOf(color);
-        this.squares[row][col].splice(color, 1);
+        this.squares[y][x].splice(color, 1);
     }
 };
+
+function padScore(score) {
+    score += '';
+    if (score.length >= 5) {
+        return score;
+    }
+    var defi = '0'.repeat(5 - score.length);
+    if (score[0] == '-') {
+        return '-' + defi + score.slice(1, score.length);
+    }
+    return defi + score;
+}
 
 function initIO() {
     socket = io();
@@ -137,16 +150,19 @@ function initIO() {
     socket.on(IO_EVTS.SQUP_DATA, function(data) {
         for (sq in data) {
             if (data[sq][0] == 'add') {
-                squp.add(data[sq][2], data[sq][1], data[sq][3]);
+                squp.add(data[sq][1], data[sq][2], data[sq][3]);
             } else {
                 console.log(data[sq]);
-                squp.remove(data[sq][2], data[sq][1], data[sq][3]);
+                squp.remove(data[sq][1], data[sq][2], data[sq][3]);
             }
         }
     });
     socket.on(IO_EVTS.POINTS, function(data) {
-        $('#my-score').text(data[0]);
-        $('#opponent-score').text(data[1]);
+        $('#my-score').text(padScore(data[0]));
+        $('#opponent-score').text(padScore(data[1]));
+    });
+    socket.on(IO_EVTS.TIME, function(data) {
+        $('#time').text(data);
     });
 
     $('#game-canvas').keydown(function(event) {
@@ -157,7 +173,8 @@ function initIO() {
 };
 
 $("document").ready(function() {
-    $('.info-bar').width(squareSize * xSquares);
+    $('#game-info').width(squareSize * xSquares);
+    $('#info-bar-spot').width(squareSize * xSquares - 90 - 10);
 
     var canvas = document.getElementById("game-canvas");
     canvas.focus();
@@ -169,12 +186,12 @@ $("document").ready(function() {
             snake.draw(ctx);
             opponent.draw(ctx);
 
-            for (var row = 0; row < squp.rows; row++) {
-                for (var col = 0; col < squp.cols; col++) {
-                    for (i in squp.squares[row][col]) {
-                        var sq = squp.squares[row][col][i];
-                        ctx.fillStyle = squp.squares[row][col][i];
-                        drawSquare(ctx, col, row, squareSize);
+            for (var y = 0; y < squp.yLen; y++) {
+                for (var x = 0; x < squp.xLen; x++) {
+                    for (i in squp.squares[y][x]) {
+                        var sq = squp.squares[y][x][i];
+                        ctx.fillStyle = squp.squares[y][x][i];
+                        drawSquare(ctx, x, y, squareSize);
                     }
                 }
             }

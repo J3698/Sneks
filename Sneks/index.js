@@ -37,7 +37,8 @@ var IO_EVTS = Object.freeze({
     SNAKE_DATA : 'snake data',
     STATE : 'game state',
     SQUP_DATA: 'squp data',
-    POINTS : 'points'
+    POINTS : 'points',
+    TIME: 'time'
 });
 
 var GAME_STATE = Object.freeze({
@@ -49,6 +50,7 @@ var GAME_STATE = Object.freeze({
 // constants
 var ySquares = 27;
 var xSquares = 36;
+var FPS = 20;
 // variables
 var queue = [];
 var games = new Set();
@@ -57,8 +59,11 @@ function Game(first, second) {
     console.log('Paired Off:', first['id'], second['id']);
 
     // game objects
-    this.squp = new SquareUpdater(ySquares, xSquares);
+    this.squp = new SquareUpdater(xSquares, ySquares);
     this.itemFactory = new ItemFactory(this);
+
+    this.time = 10;
+    this.ticksToSecond = FPS; 
 
     // points
     this.snakeOnePoints = 0;
@@ -88,6 +93,9 @@ function Game(first, second) {
         game.snakeTwo.tryTurn(data);
     });
 
+    first.emit(IO_EVTS.TIME, formatTime(this.time));
+    second.emit(IO_EVTS.TIME, formatTime(this.time));
+
     // update timer
     var interval = setInterval(function() {
         // game.snakeOne.move();
@@ -112,9 +120,9 @@ function Game(first, second) {
         second.emit(IO_EVTS.SQUP_DATA, game.squp.changes);
         game.squp.clearChanges();
 
-
         checkDeaths();
-    }, 50);
+        checkTime();
+    }, 1000 / FPS);
 
     function checkDeaths() {
         var oneDead = game.snakeOne.hitEdge || game.snakeOne.hitSelf() || game.snakeOne.hitSnake(game.snakeTwo);
@@ -134,6 +142,43 @@ function Game(first, second) {
             games.delete(this);
         }
     }
+
+    function checkTime() {
+        game.ticksToSecond--;
+        if (game.ticksToSecond == 0) {
+            game.ticksToSecond = FPS;
+            game.time--;
+            var formatted = formatTime(game.time);
+            first.emit(IO_EVTS.TIME, formatted);
+            second.emit(IO_EVTS.TIME, formatted);
+            if (game.time == 0) {
+                if (game.snakeOnePoints > game.snakeTwoPoints) {
+                    first.emit(IO_EVTS.STATE, GAME_STATE.OVER_WON);
+                    second.emit(IO_EVTS.STATE, GAME_STATE.OVER_LOST);
+                } else if (game.snakeTwoPoints > game.snakeOnePoints) {
+                    first.emit(IO_EVTS.STATE, GAME_STATE.OVER_LOST);
+                    second.emit(IO_EVTS.STATE, GAME_STATE.OVER_WON);
+                } else {
+                    first.emit(IO_EVTS.STATE, GAME_STATE.OVER_TIE);
+                    second.emit(IO_EVTS.STATE, GAME_STATE.OVER_TIE);
+                }
+                clearInterval(interval);
+                games.delete(this);
+            }
+        }
+    }
+
+    function formatTime(time) {
+        minutes = Math.floor(time / 60);
+        seconds = time % 60;
+        if (('' + minutes).length < 2) {
+            minutes = '0' + minutes;
+        }
+        if (('' + seconds).length < 2) {
+            seconds = '0' + seconds;
+        }
+        return minutes + ':' + seconds;
+    }
 }
 
 function Snake(squares, direction) {
@@ -141,7 +186,7 @@ function Snake(squares, direction) {
     this.direction = direction;
     this.lastMoved = direction;
     this.hitEdge = false;
-    this.append = false;
+    this.toAppend = 0;
 
     this.move = function() {
         var head = this.squares[this.squares.length - 1];
@@ -162,10 +207,10 @@ function Snake(squares, direction) {
             this.hitEdge = true;
         }
 
-        if (!this.append) {
+        if (this.toAppend == 0) {
             this.squares.shift();
         } else {
-            this.append = false;
+            this.toAppend--;
         }
 
         this.lastMoved = this.direction;
@@ -213,50 +258,43 @@ function Snake(squares, direction) {
 }
 
 // keep track of board changes to send to client
-function SquareUpdater(rows, cols) {
-    this.rows = rows;
-    this.cols = cols;
+function SquareUpdater(xLen, yLen) {
+    this.xLen = xLen;
+    this.yLen = yLen;
     this.squares = [];
     this.changes = [];
 
     // create matrix of positions
-    for (var y = 0; y < this.rows; y++) {
+    for (var y = 0; y < this.yLen; y++) {
         this.squares.push([]);
-        for (var x = 0; x < this.cols; x++) {
+        for (var x = 0; x < this.xLen; x++) {
             this.squares[this.squares.length - 1].push([]);
         }
     }
 
     this.addItem = function(item) {
-        var row = item.pos[1];
-        var col = item.pos[0];
-        var color = item.color;
-        this.add(row, col, color);
+        this.add(item.pos[0], item.pos[1], item.color);
     }
 
-
-    this.add = function(row, col, color) {
-        if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) {
+    this.add = function(x, y, color) {
+        if (y < 0 || y >= this.yLen || x < 0 || x >= this.xLen) {
             throw Exception('Square out of bounds.');
         }
-        this.squares[row][col].push(color);
-        this.changes.push(['add', row, col, color]);
+        this.squares[y][x].push(color);
+        this.changes.push(['add', x, y, color]);
     };
 
     this.removeItem = function(item) {
-        var row = item.pos[1];
-        var col = item.pos[0];
-        var color = item.color;
-        this.remove(row, col, color);
+        this.remove(item.pos[0], item.pos[1], item.color);
     }
 
-    this.remove = function(row, col, color) {
-        if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) {
+    this.remove = function(x, y, color) {
+        if (y < 0 || y >= this.yLen || x < 0 || x >= this.xLen) {
             throw Exception('Square out of bounds.');
         }
         var pos = this.squares.indexOf(color);
-        this.squares[row][col].splice(color, 1);
-        this.changes.push(['del', row, col, color]);
+        this.squares[y][x].splice(pos, 1);
+        this.changes.push(['del', x, y, color]);
     }
 
     this.clearChanges = function() {
@@ -291,7 +329,7 @@ function ItemFactory(game) {
 
     this.createObjects = function() {
         if (this.items.length == 0) {
-            var pt = new Point([10, 10]);
+            var pt = new Point(randomPos());
             this.game.squp.addItem(pt);
             this.items.push(pt);
         }
@@ -304,19 +342,22 @@ function Point(pos) {
 
     this.onCollide = function(game, collideSnake, otherSnake) {
         if (collideSnake == game.snakeOne) {
-            game.snakeOne.append = true;
+            game.snakeOne.toAppend += 3;
             game.snakeOnePoints += 10;
             game.snakeTwoPoints -= 3;
         } else {
-            game.snakeTwo.append = true;
+            game.snakeTwo.toAppend += 3;
             game.snakeTwoPoints += 10;
             game.snakeOnePoints -= 3;
         }
     };
 }
 
-
-
+function randomPos() {
+    var x = Math.floor(xSquares * Math.random());
+    var y = Math.floor(ySquares * Math.random());
+    return [x, y];
+}
 
 
 
