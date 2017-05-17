@@ -13,13 +13,15 @@ var colorTwo = 'rgb(200, 200, 200)';
 var snekSquareSize = squareSize - 6;
 
 // enums
-var DIRS = Object.freeze({
-    UP : 'ArrowUp',
-    DOWN : 'ArrowDown',
-    LEFT : 'ArrowLeft',
-    RIGHT : 'ArrowRight',
-    set : new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
-});
+
+var ACTION_KEYS = new Map();
+ACTION_KEYS['38'] = 'ArrowUp';
+ACTION_KEYS['37'] = 'ArrowLeft';
+ACTION_KEYS['40'] = 'ArrowDown';
+ACTION_KEYS['39'] = 'ArrowRight';
+ACTION_KEYS['49'] = 'ActionOne';
+ACTION_KEYS['50'] = 'ActionTwo';
+ACTION_KEYS['51'] = 'ActionThree';
 
 var IO_EVTS = Object.freeze({
     KEY_DN : 'key down',
@@ -64,7 +66,7 @@ var opponent = new Snek("white");
 // square update
 var squp = new SquareUpdater(xSquares, ySquares);
 
-// game starte
+// game start
 var state = GAME_STATE.PLAY;
 
 function drawBoard(ctx, colorOne, colorTwo) {
@@ -166,8 +168,10 @@ function initIO() {
     });
 
     $('#game-canvas').keydown(function(event) {
-        if (DIRS.set.has(event.key)) {
-            socket.emit(IO_EVTS.KEY_DN, event.key);
+        var action = ACTION_KEYS['' + event.keyCode];
+        if (action != null) {
+            console.log("LEGAL STUFF");
+            socket.emit(IO_EVTS.KEY_DN, action);
         }
     });
 };

@@ -1,8 +1,20 @@
+/*
+TODO
+
+Tell why you won / lost
+*/
+
 // imports
-var express = require('express')
+var express = require('express');
 var app = express();
 var http = require('http').Server(app);
 var snek = require('socket.io')(http);
+var heapq = require('heapq');
+
+// local imports
+var itemfact = require('./ItemFact');
+var snake = require('./Snake');
+
 
 // static files
 app.get('/', function(req, res) {
@@ -19,8 +31,10 @@ snek.on('connection', function(socket) {
         queue.push(socket);
     }
 });
-app.use(express.static(__dirname + "/client"))
-http.listen(8000, "127.0.0.1");
+app.use(express.static(__dirname + "/client"));
+http.listen(process.env.PORT, process.env.IP);
+
+
 
 // enums
 
@@ -56,11 +70,10 @@ var queue = [];
 var games = new Set();
 
 function Game(first, second) {
-    console.log('Paired Off:', first['id'], second['id']);
-
     // game objects
     this.squp = new SquareUpdater(xSquares, ySquares);
-    this.itemFactory = new ItemFactory(this);
+    this.itemFactory = new itemfact.ItemFactory(this);
+    this.evtHandler = new EventHandler();
 
     this.time = 10;
     this.ticksToSecond = FPS; 
@@ -76,21 +89,25 @@ function Game(first, second) {
     for (var x = 0; x <= 7; x++) {
         snakeOneSquares.push([x, 0]);
     }
-    this.snakeOne = new Snake(snakeOneSquares, DIRS.RIGHT);
-    var snakeTwoSquares = []
+    this.snakeOne = new snake.Snake(snakeOneSquares, DIRS.RIGHT);
+    var snakeTwoSquares = [];
     for (var x = 0; x <= 7; x++) {
         snakeTwoSquares.push([xSquares - 1 - x, ySquares - 1]);
     }
-    this.snakeTwo = new Snake(snakeTwoSquares, DIRS.LEFT);
+    this.snakeTwo = new snake.Snake(snakeTwoSquares, DIRS.LEFT);
 
     var game = this;
 
     // listen for input
     first.on(IO_EVTS.KEY_DN, function(data) {
-        game.snakeOne.tryTurn(data);
+        if (DIRS.set.has(data)) {
+            game.snakeOne.tryTurn(data);
+        }
     });
     second.on(IO_EVTS.KEY_DN, function(data) {
-        game.snakeTwo.tryTurn(data);
+        if (DIRS.set.has(data)) {
+            game.snakeTwo.tryTurn(data);
+        }
     });
 
     first.emit(IO_EVTS.TIME, formatTime(this.time));
@@ -169,8 +186,8 @@ function Game(first, second) {
     }
 
     function formatTime(time) {
-        minutes = Math.floor(time / 60);
-        seconds = time % 60;
+        var minutes = Math.floor(time / 60);
+        var seconds = time % 60;
         if (('' + minutes).length < 2) {
             minutes = '0' + minutes;
         }
@@ -181,80 +198,28 @@ function Game(first, second) {
     }
 }
 
-function Snake(squares, direction) {
-    this.squares = squares; 
-    this.direction = direction;
-    this.lastMoved = direction;
-    this.hitEdge = false;
-    this.toAppend = 0;
+function EventHandler() {
+    this.events = [];
 
-    this.move = function() {
-        var head = this.squares[this.squares.length - 1];
-        var newSquare = [head[0], head[1]];
+    this.cmpEvents = function(evt1, evt2) {
+        return evt1[1] < evt2[1];
+    };
 
-        if (this.direction == DIRS.UP) {
-            newSquare[1]--;
-        } else if (this.direction == DIRS.DOWN) {
-            newSquare[1]++;
-        } else if (this.direction == DIRS.LEFT) {
-            newSquare[0]--;
-        } else {
-            newSquare[0]++;
-        }
+    this.addEvent = function(func, time) {
+        time = Date.now() + time * 1000;
+        heapq.push(this.events, [func, time], this.cmpEvents);
+    };
 
-        if (newSquare[0] < 0 || newSquare[1] < 0 ||
-             newSquare[0] >= xSquares || newSquare[1] >= ySquares) {
-            this.hitEdge = true;
-        }
-
-        if (this.toAppend == 0) {
-            this.squares.shift();
-        } else {
-            this.toAppend--;
-        }
-
-        this.lastMoved = this.direction;
-        this.squares.push(newSquare);
-    }
-
-    this.hitSelf = function() {
-        var head = this.squares[this.squares.length - 1];
-        for (var i = 0; i < this.squares.length - 1; i++) {
-            var curr = this.squares[i];
-            if (curr[0] == head[0] && curr[1] == head[1]) {
-                return true;
+    this.checkEvents = function() {
+        while (this.events.length != 0) {
+            if (heapq.top(this.events)[1] <= Date.now()) {
+                var first = heapq.pop(this.events, this.cmpEvents());
+                first[0]();
+            } else {
+                break;
             }
         }
-        return false;
-    }
-
-    this.hitSnake = function(snake) {
-        var head = this.squares[this.squares.length - 1];
-        for (var i = 0; i < snake.squares.length; i++) {
-            var curr = snake.squares[i];
-            if (curr[0] == head[0] && curr[1] == head[1]) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    this.tryTurn = function(direction) {
-        if (DIRS.set.has(direction)) {
-            var valid = direction == DIRS.UP && this.lastMoved != DIRS.DOWN;
-            valid = valid || direction == DIRS.DOWN && this.lastMoved != DIRS.UP;
-            valid = valid || direction == DIRS.LEFT && this.lastMoved != DIRS.RIGHT;
-            valid = valid || direction == DIRS.RIGHT && this.lastMoved != DIRS.LEFT;
-            if (valid) {
-                this.direction = direction;
-            }
-        }
-    }
-
-    this.collides = function(pos) {
-        var head = this.squares[this.squares.length - 1];
-        return head[0] == pos[0] && head[1] == pos[1];
-    }
+    };
 }
 
 // keep track of board changes to send to client
@@ -274,7 +239,7 @@ function SquareUpdater(xLen, yLen) {
 
     this.addItem = function(item) {
         this.add(item.pos[0], item.pos[1], item.color);
-    }
+    };
 
     this.add = function(x, y, color) {
         if (y < 0 || y >= this.yLen || x < 0 || x >= this.xLen) {
@@ -286,7 +251,7 @@ function SquareUpdater(xLen, yLen) {
 
     this.removeItem = function(item) {
         this.remove(item.pos[0], item.pos[1], item.color);
-    }
+    };
 
     this.remove = function(x, y, color) {
         if (y < 0 || y >= this.yLen || x < 0 || x >= this.xLen) {
@@ -295,70 +260,9 @@ function SquareUpdater(xLen, yLen) {
         var pos = this.squares.indexOf(color);
         this.squares[y][x].splice(pos, 1);
         this.changes.push(['del', x, y, color]);
-    }
+    };
 
     this.clearChanges = function() {
         this.changes = [];
-    }
-};
-
-
-function ItemFactory(game) {
-    this.game = game;
-    this.items = [];
-    var fact = this;
-
-    this.update = function() {
-        this.checkCollisions(this.game, this.game.snakeOne, this.game.snakeTwo);
-        this.createObjects();
-    }
-
-    this.checkCollisions = function(game, snakeOne, snaketwo) {
-        for (var i = this.items.length - 1; i >= 0; i--) {
-            if (this.game.snakeOne.collides(this.items[i].pos)) {
-                this.items[i].onCollide(game, this.game.snakeOne, this.game.snakeTwo);
-                this.game.squp.removeItem(this.items[i]);
-                this.items.splice(i, 1);
-            } else if (this.game.snakeTwo.collides(this.items[i].pos)) {
-                this.items[i].onCollide(game, this.game.snakeTwo, this.game.snakeOne);
-                this.game.squp.removeItem(this.items[i]);
-                this.items.splice(i, 1);
-            }
-        }
-    }
-
-    this.createObjects = function() {
-        if (this.items.length == 0) {
-            var pt = new Point(randomPos());
-            this.game.squp.addItem(pt);
-            this.items.push(pt);
-        }
-    }
-}
-
-function Point(pos) {
-    this.pos = pos;
-    this.color = 'rgb(255, 0, 255)';
-
-    this.onCollide = function(game, collideSnake, otherSnake) {
-        if (collideSnake == game.snakeOne) {
-            game.snakeOne.toAppend += 3;
-            game.snakeOnePoints += 10;
-            game.snakeTwoPoints -= 3;
-        } else {
-            game.snakeTwo.toAppend += 3;
-            game.snakeTwoPoints += 10;
-            game.snakeOnePoints -= 3;
-        }
     };
 }
-
-function randomPos() {
-    var x = Math.floor(xSquares * Math.random());
-    var y = Math.floor(ySquares * Math.random());
-    return [x, y];
-}
-
-
-
-
